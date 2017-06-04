@@ -258,6 +258,7 @@ while(round_number<=25):
     runAlg()
 
     person=True
+    print('')
     print('Current pick:%i'%pick)
     while person:
         print('')
