@@ -194,11 +194,9 @@ def runAlg():
     print('Top picks by position:')
     temp_table=None
     pick_table=deepcopy(pick_data)
-    print(pick_data['QB'])
     top_picks={}
     for pos in pick_data.keys():
         print(pos)
-        print(fpts)
         pick_table[pos]['net']=fpts*pick_data[pos]['m_pts']+ranks*pick_data[pos]['rels']
 
 
@@ -207,8 +205,6 @@ def runAlg():
         pick_table[pos].sort('net')
         pick_table[pos].reverse()
 
-        for row in range(len(pick_table)):
-            print(pick_table[pos][row])
 
         current_mean[pos]=np.mean(pick_table[pos]['net'][0:24])
         current_std[pos]=np.std(pick_table[pos]['net'][0:24])
