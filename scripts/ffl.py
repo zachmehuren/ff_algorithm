@@ -213,7 +213,7 @@ for pos in current_std.keys():
                                       [tables[pos+'_D']['rels'][np.where(tables[pos+'_D']['player']==player)[0][0]].astype(float)]],
                                      names=('player','age','m_pts','rels'),dtype=('S30','i','f','f'))
         round_number=0
-        pick=10
+        pick=1
         team_age=[]
         my_team={
             'QB':[],
