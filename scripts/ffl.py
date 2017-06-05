@@ -6,6 +6,8 @@ from copy import deepcopy
 from astropy.io import ascii
 import os.path
 
+num_rounds=int(raw_input('Number of rounds would you like fantasy points per game considered: '))
+
 cols={
     'P':'C:U',
     'D':'B:M'
@@ -49,7 +51,7 @@ sheets=['P','D']
 
 tables={}
 
-path='ff_sheet.xlsx'
+path=os.path.join('data','ff_sheet.xlsx')
 
 xls = pd.ExcelFile(path)
 totals={}
@@ -99,6 +101,7 @@ for x in pos:
             rank_maxes[x]=np.max(totals[x+'_'+s][x])
             tables[x+'_'+s]['rels']=totals[x+'_'+s][x]/rank_maxes[x]
             tables[x+'_'+s].sort('rels')
+            tables[x+'_'+s].reverse()
 
 remove=[]
 ppg={
@@ -121,7 +124,7 @@ for pos in ppg.keys():
             remove.append(row)
     tables[pos+'_D'].remove_rows(remove)
 
-first,last,pos,pts=np.loadtxt('ffpg.csv',dtype='str',unpack=True,delimiter=',')
+first,last,pos,pts=np.loadtxt(os.path.join('data','ffpg.csv'),dtype='str',unpack=True,delimiter=',')
 
 for p in ppg.keys():
     temp_first=[first[i] for i in range(len(first)) if pos[i]==p]
@@ -180,21 +183,52 @@ current_std={
 global pick_data
 pick_data={}
 
+read=False
+my_team=dict([])
 for pos in current_std.keys():
-    if os.path.isfile('current_'+pos+'.dat'):
-        pick_data[pos]=ascii.read('current_'+pos+'.dat')
-        round_number,pick=np.loadtxt('round.dat',unpack=True)
+    if read or os.path.isfile(os.path.join('restart_files','current_'+pos+'.dat')):
+        pick_data[pos]=ascii.read(os.path.join('restart_files','current_'+pos+'.dat'))
+        round_number,pick=np.loadtxt(os.path.join('restart_files','round.dat'),unpack=True)
+        team_age=np.loadtxt(os.path.join('restart_files','team_age.dat'),dtype='int').tolist()
+        if os.path.isfile(os.path.join('restart_files','myTeam_'+pos+'.dat')):
+            my_team[pos]=np.loadtxt(os.path.join('restart_files','myTeam_'+pos+'.dat'),delimiter=',',dtype='str').tolist()
+            if not isinstance(my_team[pos],(tuple,list)):
+                my_team[pos]=[my_team[pos]]
+        else:
+            my_team[pos]=[]
+        if not isinstance(team_age,(tuple,list)):
+            team_age=[team_age]
+        read=True
     else:
-        pick_data[pos]=Table([tables[pos+'_P']['player'],tables[pos+'_P']['m_pts'].astype(float),tables[pos+'_D']['rels'].astype(float)])
+        pick_data[pos]=None
+        for i in range(len(tables[pos+'_P'])):
+            player=tables[pos+'_P']['player'][i]
+            if pick_data[pos]:
+                pick_data[pos].add_row([player,tables[pos+'_D']['age'][np.where(tables[pos+'_D']['player']==player)[0][0]],
+                                        tables[pos+'_P']['m_pts'][np.where(tables[pos+'_P']['player']==player)[0][0]].astype(float),
+                                        tables[pos+'_D']['rels'][np.where(tables[pos+'_D']['player']==player)[0][0]].astype(float)])
+            else:
+                pick_data[pos]=Table([[player],[tables[pos+'_D']['age'][np.where(tables[pos+'_D']['player']==player)[0][0]]],
+                                      [tables[pos+'_P']['m_pts'][np.where(tables[pos+'_P']['player']==player)[0][0]].astype(float)],
+                                      [tables[pos+'_D']['rels'][np.where(tables[pos+'_D']['player']==player)[0][0]].astype(float)]],
+                                     names=('player','age','m_pts','rels'),dtype=('S30','i','f','f'))
         round_number=0
-        pick=1
+        pick=10
+        team_age=[]
+        my_team={
+            'QB':[],
+            'RB':[],
+            'WR':[],
+            'TE':[]
+        }
 
-
+team_positions={'QB':4,'RB':4,'WR':2,'TE':3}
 def runAlg():
     print('Top picks by position:')
     temp_table=None
     pick_table=deepcopy(pick_data)
     top_picks={}
+    #keys=[x for x in pick_data.keys() if len(my_team[x])<team_positions[x]]
     for pos in pick_data.keys():
         print(pos)
         pick_table[pos]['net']=fpts*pick_data[pos]['m_pts']+ranks*pick_data[pos]['rels']
@@ -204,8 +238,6 @@ def runAlg():
         pick_table[pos].remove_column('rels')
         pick_table[pos].sort('net')
         pick_table[pos].reverse()
-
-
         current_mean[pos]=np.mean(pick_table[pos]['net'][0:24])
         current_std[pos]=np.std(pick_table[pos]['net'][0:24])
         #max=np.max((pick_table[pos]['net']-current_mean[pos])/current_std[pos])
@@ -216,7 +248,7 @@ def runAlg():
         pick_table[pos].remove_column('net')
         top_picks[pos]=np.array(pick_table[pos][0:3])
         for i in range(3):
-            print('%i. %s=%f'%(i+1,top_picks[pos][i][0],top_picks[pos][i][1]))
+            print('%i. %s (Age=%i, Score=%f)'%(i+1,top_picks[pos][i][0],top_picks[pos][i][1],top_picks[pos][i][2]))
         pick_table[pos]['pos']=pos
         if temp_table:
             temp_table=vstack([temp_table,pick_table[pos]])
@@ -225,49 +257,68 @@ def runAlg():
         temp_table.sort('res')
         temp_table.reverse()
         print('Top current picks:')
-    for i in range(10):
-        print('%i. %s-%s (%f)'%(i+1,temp_table['pos'][i],temp_table['player'][i],temp_table['res'][i]))
+    top=0
+    for i in range(len(temp_table)):
+        if len(my_team[temp_table['pos'][i]])<team_positions[temp_table['pos'][i]]:
+            print('%i. %s-%s (Age=%i, Score=%f)'%(i+1,temp_table['pos'][i],temp_table['player'][i],temp_table['age'][i],temp_table['res'][i]))
+            top+=1
+        if top==10:
+            break
 
 
 my_picks=[11,14,35,38,59,62,83,86,107,110,131,134,155,158,179,182,203,206,227,230,251,254,275,278,299]
 #new_round=[1,13,25,37,49,72,73,96,97,120,121,144,145,168,169,192,193,216,217,240,241,264,265,288,289]
 new_round=[1+12*i for i in range(25)]
 
-my_team={
-    'QB':[],
-    'RB':[],
-    'WR':[],
-    'TE':[]
-}
-
 while(round_number<=25):
+    print(team_age)
     if pick in new_round:
         if fpts>=0:
-            fpts=1-.1*round_number
+            fpts=1-(1/num_rounds)*round_number
         ranks=1-fpts
         round_number+=1
         print('')
-        print('____________________________________________________')
+        print('----------------------------------------------------')
         print('Round %i:'%round_number)
         if np.max([len(my_team[x]) for x in my_team.keys()]) > 0:
             print('')
-            print('Your team:')
+            print('Your team: (Average age %d)'%np.mean(team_age))
             for pos in my_team:
-                print(pos+':  ,'.join(my_team[pos]))
+                print(pos+': '+', '.join(my_team[pos]))
+        print('----------------------------------------------------')
+        print('')
 
     runAlg()
 
     person=True
+    undo=False
     print('')
     print('Current pick:%i'%pick)
     while person:
         print('')
         picked=raw_input('Player picked: ')
+        if picked=='quit':
+            sys.exit()
+        if picked[0:6] == 'rookie':
+            if pick in my_picks:
+                my_team[picked[-2:].upper()].append('rookie')
+                team_age.append(21)
+            last_picked=(picked[-2:],['rookie'])
+            break
+        if picked=='undo':
+            if (pick-1) in my_picks:
+                my_team[last_picked[0]].remove(last_picked[1][0])
+                temp=team_age.pop()
+            if last_picked[1][0]!='rookie':
+                pick_data[last_picked[0]].add_row(last_picked[1])
+            undo=True
+            break
         for pos in ppg.keys():
             if picked in pick_data[pos]['player']:
                 if pick in my_picks:
                     my_team[pos].append(picked)
-
+                    team_age.append(pick_data[pos][np.where(pick_data[pos]['player']==picked)[0][0]]['age'])
+                last_picked=(pos,list(pick_data[pos][np.where(pick_data[pos]['player']==picked)[0][0]]))
                 pick_data[pos].remove_row(np.where(pick_data[pos]['player']==picked)[0][0])
                 person=False
                 break
@@ -275,7 +326,17 @@ while(round_number<=25):
             print('That player is not in the list, try again.')
         else:
             break
-    pick+=1
+
+    if undo:
+        pick-=1
+        if pick-1 in new_round:
+            round-=1
+    else:
+        pick+=1
+
     for pos in pick_data.keys():
-        ascii.write(pick_data[pos],'current_'+pos+'.dat',overwrite=True)
-    np.savetxt('round.dat',[round_number,pick])
+        ascii.write(pick_data[pos],os.path.join('restart_files','current_'+pos+'.dat'),overwrite=True)
+        if len(my_team[pos])>0:
+            np.savetxt(os.path.join('restart_files','myTeam_'+pos+'.dat'),my_team[pos],delimiter=',',fmt='%s')
+    np.savetxt(os.path.join('restart_files','round.dat'),[round_number,pick],fmt='%i')
+    np.savetxt(os.path.join('restart_files','team_age.dat'),team_age,fmt='%i')

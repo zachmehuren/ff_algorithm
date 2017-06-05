@@ -1,0 +1,2 @@
+rm restart_files/*
+python scripts/ffl.py
